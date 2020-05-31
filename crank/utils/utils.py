@@ -97,7 +97,7 @@ def mlfb2wavf(mlfb, wavf, fs=22050, n_mels=80, fftl=1024, hop_size=220, plot=Fal
         plot_mlfb(mlfb, wavf)
 
 
-def mlfb2hdf5(mlfb, hdf5, ext="feats"):
+def feat2hdf5(mlfb, hdf5, ext="feats"):
     tdir, name = Path(hdf5).parent, Path(hdf5).stem
     h5f = tdir / (str(name) + ".h5")
     h5 = HDF5(str(h5f), "a")
@@ -106,12 +106,22 @@ def mlfb2hdf5(mlfb, hdf5, ext="feats"):
 
 
 def world2wav(
-    f0, mcep, codeap, wavf=None, fs=22050, fftl=1024, shiftms=10, alpha=0.455
+    f0,
+    mcep,
+    codeap,
+    wavf=None,
+    fs=22050,
+    fftl=1024,
+    shiftms=10,
+    alpha=0.455,
+    plot=False,
 ):
     synthesizer = Synthesizer(fs=fs, fftl=fftl, shiftms=shiftms)
     wav = synthesizer.synthesis(f0, mcep, codeap, alpha=alpha)
     wav = np.clip(np.array(wav, dtype=np.int16), -32768, 32767)
     if wavf is not None:
+        if plot:
+            plot_mlfb(mcep, wavf)
         wavfile.write(wavf, fs, wav)
     else:
         return wav

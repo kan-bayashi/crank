@@ -16,7 +16,7 @@ import torch
 import numpy as np
 from joblib import Parallel, delayed
 
-from crank.utils import mlfb2wavf, mlfb2hdf5, world2wav, to_numpy
+from crank.utils import feat2hdf5, mlfb2wavf, world2wav, to_numpy
 from crank.net.trainer import BaseTrainer
 from crank.net.trainer.dataset import create_one_hot, convert_f0
 
@@ -97,7 +97,7 @@ class VQVAETrainer(BaseTrainer):
                     feat = self.scaler[self.conf["feat_type"]].inverse_transform(
                         normed_feat
                     )
-                    mlfb2hdf5(
+                    feat2hdf5(
                         feat,
                         wavf,
                         ext="feats_recon_{}-{}-{}".format(
@@ -266,24 +266,37 @@ class VQVAETrainer(BaseTrainer):
         return feats
 
     def _save_decoded_world(self, feats):
-        for k, v in feats.items():
-            world2wav(
-                v["f0"][:, 0].astype(np.float64),
-                v["feat"].astype(np.float64),
-                v["cap"].astype(np.float64),
-                wavf=k,
-                fs=self.conf["feature"]["fs"],
-                fftl=self.conf["feature"]["fftl"],
-                shiftms=self.conf["feature"]["shiftms"],
-                alpha=self.conf["feature"]["mcep_alpha"],
-            )
+        n_samples = self.conf["n_gl_samples"]
+        if len(feats.keys()) < n_samples:
+            n_samples = len(feats.keys())
+
+        # world vocoder
+        Parallel(n_jobs=self.n_jobs)(
+            [
+                delayed(world2wav)(
+                    feats[wavf]["f0"][:, 0].astype(np.float64),
+                    feats[wavf]["feat"].astype(np.float64),
+                    feats[wavf]["cap"].astype(np.float64),
+                    wavf=wavf,
+                    fs=self.conf["feature"]["fs"],
+                    fftl=self.conf["feature"]["fftl"],
+                    shiftms=self.conf["feature"]["shiftms"],
+                    alpha=self.conf["feature"]["mcep_alpha"],
+                    plot=True,
+                )
+                for wavf in random.sample(list(feats.keys()), n_samples)
+            ]
+        )
+
+        # save as hdf5
+        self._save_feats(feats)
+        if self.conf["save_f0_feats"]:
+            self._save_f0_feats(feats)
 
     def _save_decoded_mlfbs(self, feats):
-        n_samples = (
-            self.conf["n_gl_samples"]
-            if len(feats.keys()) > self.conf["n_gl_samples"]
-            else len(feats.keys())
-        )
+        n_samples = self.conf["n_gl_samples"]
+        if len(feats.keys()) < n_samples:
+            n_samples = len(feats.keys())
 
         # gl
         Parallel(n_jobs=self.n_jobs)(
@@ -302,19 +315,24 @@ class VQVAETrainer(BaseTrainer):
         )
 
         # save as hdf5
-        k = "normed_feat" if self.conf["save_mlfb_type"] == "normed" else "feat"
+        self._save_feats(feats)
+        if self.conf["save_f0_feats"]:
+            self._save_f0_feats(feats)
+
+    def _save_feats(self, feats):
+        k = "normed_feat" if self.conf["save_feat_type"] == "normed" else "feat"
         Parallel(n_jobs=self.n_jobs)(
             [
-                delayed(mlfb2hdf5)(feat[k], path, ext="feats")
+                delayed(feat2hdf5)(feat[k], path, ext="feats")
                 for path, feat in feats.items()
             ]
         )
 
-        if self.conf["save_f0_feats"]:
-            for k in ["lcf0", "f0", "normed_lcf0", "uv"]:
-                Parallel(n_jobs=self.n_jobs)(
-                    [
-                        delayed(mlfb2hdf5)(feat[k], path, ext=k)
-                        for path, feat in feats.items()
-                    ]
-                )
+    def _save_f0_feats(self, feats):
+        for k in ["lcf0", "f0", "normed_lcf0", "uv"]:
+            Parallel(n_jobs=self.n_jobs)(
+                [
+                    delayed(feat2hdf5)(feat[k], path, ext=k)
+                    for path, feat in feats.items()
+                ]
+            )

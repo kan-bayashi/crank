@@ -109,6 +109,7 @@ class Feature(object):
         self.feats["mlfb"] = logmelfilterbank(
             x,
             self.conf["fs"],
+            fft_size=self.conf["fftl"],
             hop_size=self.conf["hop_size"],
             win_length=self.conf["fftl"],
             window="hann",
