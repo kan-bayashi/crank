@@ -329,7 +329,10 @@ class VQVAETrainer(BaseTrainer):
         )
 
     def _save_f0_feats(self, feats):
-        for k in ["lcf0", "f0", "normed_lcf0", "uv"]:
+        type_features = ["lcf0", "f0", "normed_lcf0", "uv"]
+        if self.conf["feat_type"] == "mcep":
+            type_features += ["cap"]
+        for k in type_features:
             Parallel(n_jobs=self.n_jobs)(
                 [
                     delayed(feat2hdf5)(feat[k], path, ext=k)
